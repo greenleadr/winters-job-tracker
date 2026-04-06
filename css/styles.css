@@ -1395,6 +1395,35 @@ input, select, textarea {
   font-weight: 600;
 }
 
+/* ============================================
+   Advanced Analytics — Streak Metrics
+   ============================================ */
+.streak-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+/* Goal Summary */
+.goal-summary-text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.goal-hit {
+  color: var(--status-interview);
+}
+
+.goal-miss {
+  color: var(--status-rejected);
+}
+
+/* Card subtitle in header */
+.card-subtitle {
+  margin-left: auto;
+}
+
 /* Confirmation dialog */
 .confirm-dialog {
   text-align: center;
