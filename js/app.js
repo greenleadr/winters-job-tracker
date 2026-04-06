@@ -82,6 +82,11 @@ function openSettings() {
         <input type="text" class="form-input" id="settings-path" value="${settings.path}" placeholder="data/applications.json">
       </div>
       <div class="settings-field">
+        <label class="form-label">Branch</label>
+        <input type="text" class="form-input" id="settings-branch" value="${settings.branch}" placeholder="main">
+        <p class="settings-help">The branch to read from and commit to (e.g., main, master, or your feature branch).</p>
+      </div>
+      <div class="settings-field">
         <button class="btn btn-secondary" id="test-connection-btn">Test Connection</button>
         <span id="connection-result"></span>
       </div>
@@ -108,7 +113,7 @@ function openSettings() {
     const resultEl = document.getElementById('connection-result');
     const token = document.getElementById('settings-token').value;
     const repo = document.getElementById('settings-repo').value;
-    saveSettings(token, repo, document.getElementById('settings-path').value);
+    saveSettings(token, repo, document.getElementById('settings-path').value, document.getElementById('settings-branch').value);
     resultEl.innerHTML = '<span class="loading-spinner"></span>';
     try {
       await testConnection();
@@ -122,7 +127,8 @@ function openSettings() {
     saveSettings(
       document.getElementById('settings-token').value,
       document.getElementById('settings-repo').value,
-      document.getElementById('settings-path').value
+      document.getElementById('settings-path').value,
+      document.getElementById('settings-branch').value
     );
     showToast('Settings saved');
     closeModal();

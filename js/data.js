@@ -118,14 +118,16 @@ function getSettings() {
   return {
     token: localStorage.getItem('gh_token') || '',
     repo: localStorage.getItem('gh_repo') || 'greenleadr/winters-job-tracker',
-    path: localStorage.getItem('gh_path') || 'data/applications.json'
+    path: localStorage.getItem('gh_path') || 'data/applications.json',
+    branch: localStorage.getItem('gh_branch') || 'main'
   };
 }
 
-export function saveSettings(token, repo, path) {
+export function saveSettings(token, repo, path, branch) {
   localStorage.setItem('gh_token', token);
   localStorage.setItem('gh_repo', repo);
   localStorage.setItem('gh_path', path);
+  localStorage.setItem('gh_branch', branch || 'main');
 }
 
 export function getStoredSettings() {
@@ -143,11 +145,11 @@ export async function testConnection() {
 }
 
 export async function persistToGitHub() {
-  const { token, repo, path } = getSettings();
+  const { token, repo, path, branch } = getSettings();
   if (!token) throw new Error('No GitHub token configured. Open Settings to add one.');
 
-  // Get current file SHA
-  const getResp = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}`, {
+  // Get current file SHA on the target branch
+  const getResp = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
 
@@ -162,7 +164,7 @@ export async function persistToGitHub() {
   const body = {
     message: `Update job applications (${applications.length} total)`,
     content,
-    branch: 'claude/init-job-tracker-MtfSJ'
+    branch
   };
   if (sha) body.sha = sha;
 
