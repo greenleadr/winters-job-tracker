@@ -1,4 +1,4 @@
-import { getApplications, filterApplications, sortApplications, deleteApplication, persistToGitHub } from './data.js';
+import { getApplications, filterApplications, sortApplications, deleteApplication } from './data.js';
 import {
   formatDate, statusBadge, debounce, unique, showToast, ALL_STATUSES
 } from './utils.js';
@@ -218,12 +218,11 @@ function refreshTable() {
       e.stopPropagation();
       const id = parseInt(btn.dataset.id, 10);
       if (!confirm('Are you sure you want to delete this application?')) return;
-      deleteApplication(id);
       try {
-        await persistToGitHub();
+        await deleteApplication(id);
         showToast('Application deleted');
       } catch (err) {
-        showToast('Deleted locally (GitHub sync failed: ' + err.message + ')', 'error');
+        showToast('Delete failed: ' + err.message, 'error');
       }
       refreshTable();
     });

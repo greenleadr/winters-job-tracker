@@ -1,4 +1,4 @@
-import { getApplications, getApplication, addApplication, updateApplication, persistToGitHub } from './data.js';
+import { getApplications, getApplication, addApplication, updateApplication, deleteApplication } from './data.js';
 import { unique, showToast, ALL_STATUSES, STATUS_CLASSES } from './utils.js';
 import { closeModal } from './app.js';
 
@@ -125,12 +125,13 @@ export function openFormModal(editId = null) {
   if (isEdit) {
     document.getElementById('form-delete').onclick = async () => {
       if (!confirm('Delete this application?')) return;
-      const { deleteApplication } = await import('./data.js');
-      deleteApplication(editId);
-      try { await persistToGitHub(); } catch (e) { /* silent */ }
-      showToast('Application deleted');
+      try {
+        await deleteApplication(editId);
+        showToast('Application deleted');
+      } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+      }
       closeModal();
-      // Re-render current view
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     };
   }
@@ -161,17 +162,15 @@ export function openFormModal(editId = null) {
     document.getElementById('save-text').style.display = 'none';
     document.getElementById('save-spinner').style.display = 'inline-block';
 
-    if (isEdit) {
-      updateApplication(editId, data);
-    } else {
-      addApplication(data);
-    }
-
     try {
-      await persistToGitHub();
+      if (isEdit) {
+        await updateApplication(editId, data);
+      } else {
+        await addApplication(data);
+      }
       showToast(isEdit ? 'Application updated' : 'Application added');
     } catch (err) {
-      showToast('Saved locally (GitHub sync failed: ' + err.message + ')', 'error');
+      showToast('Save failed: ' + err.message, 'error');
     }
 
     closeModal();

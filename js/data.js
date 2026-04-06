@@ -1,10 +1,70 @@
+const SUPABASE_URL = 'https://gbahfjseclpajowqgsaz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdiYWhmanNlY2xwYWpvd3Fnc2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0ODg1MzgsImV4cCI6MjA5MTA2NDUzOH0.OBBGnJV__xlB3gEKh2ikULBYS36uedPRNfEWIdET_G4';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 let applications = [];
 let listeners = [];
 
-// Load data from JSON file
+// Map DB row (snake_case) to app object (camelCase)
+function fromRow(row) {
+  return {
+    id: row.id,
+    jobTitle: row.job_title,
+    company: row.company,
+    industry: row.industry || '',
+    date: row.date,
+    status: row.status,
+    location: row.location || '',
+    source: row.source || '',
+    referral: row.referral || '',
+    targetCompany: row.target_company
+  };
+}
+
+// Map app object (camelCase) to DB row (snake_case)
+function toRow(app) {
+  return {
+    job_title: app.jobTitle,
+    company: app.company,
+    industry: app.industry || '',
+    date: app.date,
+    status: app.status,
+    location: app.location || '',
+    source: app.source || '',
+    referral: app.referral || '',
+    target_company: app.targetCompany
+  };
+}
+
+// Load all applications from Supabase
 export async function loadApplications() {
-  const resp = await fetch('data/applications.json');
-  applications = await resp.json();
+  const { data, error } = await supabase
+    .from('applications')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('Supabase load error:', error);
+    // Fallback to local JSON if Supabase is empty or errors
+    try {
+      const resp = await fetch('data/applications.json');
+      applications = await resp.json();
+    } catch (e) {
+      applications = [];
+    }
+  } else if (data.length === 0) {
+    // DB is empty — load from JSON fallback
+    try {
+      const resp = await fetch('data/applications.json');
+      applications = await resp.json();
+    } catch (e) {
+      applications = [];
+    }
+  } else {
+    applications = data.map(fromRow);
+  }
+
   notify();
   return applications;
 }
@@ -17,28 +77,83 @@ export function getApplication(id) {
   return applications.find(a => a.id === id);
 }
 
-export function addApplication(app) {
-  const maxId = applications.reduce((max, a) => Math.max(max, a.id), 0);
-  app.id = maxId + 1;
-  applications.push(app);
+export async function addApplication(app) {
+  const row = toRow(app);
+  const { data, error } = await supabase
+    .from('applications')
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const newApp = fromRow(data);
+  applications.push(newApp);
   notify();
-  return app;
+  return newApp;
 }
 
-export function updateApplication(id, updates) {
+export async function updateApplication(id, updates) {
+  const row = toRow({ ...getApplication(id), ...updates });
+  const { data, error } = await supabase
+    .from('applications')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
   const idx = applications.findIndex(a => a.id === id);
-  if (idx === -1) return null;
-  applications[idx] = { ...applications[idx], ...updates };
+  if (idx !== -1) {
+    applications[idx] = fromRow(data);
+  }
   notify();
   return applications[idx];
 }
 
-export function deleteApplication(id) {
+export async function deleteApplication(id) {
+  const { error } = await supabase
+    .from('applications')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+
   const idx = applications.findIndex(a => a.id === id);
-  if (idx === -1) return false;
-  applications.splice(idx, 1);
+  if (idx !== -1) applications.splice(idx, 1);
   notify();
   return true;
+}
+
+// Seed data from local JSON into Supabase (one-time import)
+export async function seedFromJSON() {
+  const resp = await fetch('data/applications.json');
+  const jsonApps = await resp.json();
+
+  const rows = jsonApps.map(toRow);
+
+  // Insert in batches of 50
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50);
+    const { error } = await supabase
+      .from('applications')
+      .insert(batch);
+    if (error) throw new Error(`Seed error at batch ${i}: ${error.message}`);
+  }
+
+  // Reload from DB
+  await loadApplications();
+  return applications.length;
+}
+
+// Check if DB has data
+export async function isDBSeeded() {
+  const { count, error } = await supabase
+    .from('applications')
+    .select('*', { count: 'exact', head: true });
+  if (error) return false;
+  return count > 0;
 }
 
 // Simple pub/sub for data changes
@@ -109,78 +224,4 @@ export function sortApplications(apps, sortKey, sortDir) {
     if (va > vb) return sortDir === 'asc' ? 1 : -1;
     return 0;
   });
-}
-
-// GitHub API integration
-const GITHUB_API = 'https://api.github.com';
-
-function getSettings() {
-  return {
-    token: localStorage.getItem('gh_token') || '',
-    repo: localStorage.getItem('gh_repo') || 'greenleadr/winters-job-tracker',
-    path: localStorage.getItem('gh_path') || 'data/applications.json',
-    branch: localStorage.getItem('gh_branch') || 'main'
-  };
-}
-
-export function saveSettings(token, repo, path, branch) {
-  localStorage.setItem('gh_token', token);
-  localStorage.setItem('gh_repo', repo);
-  localStorage.setItem('gh_path', path);
-  localStorage.setItem('gh_branch', branch || 'main');
-}
-
-export function getStoredSettings() {
-  return getSettings();
-}
-
-export async function testConnection() {
-  const { token, repo } = getSettings();
-  if (!token) throw new Error('No token configured');
-  const resp = await fetch(`${GITHUB_API}/repos/${repo}`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  if (!resp.ok) throw new Error(`GitHub API error: ${resp.status}`);
-  return await resp.json();
-}
-
-export async function persistToGitHub() {
-  const { token, repo, path, branch } = getSettings();
-  if (!token) throw new Error('No GitHub token configured. Open Settings to add one.');
-
-  // Get current file SHA on the target branch
-  const getResp = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-
-  let sha = null;
-  if (getResp.ok) {
-    const data = await getResp.json();
-    sha = data.sha;
-  }
-
-  // Commit updated data
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(applications, null, 2))));
-  const body = {
-    message: `Update job applications (${applications.length} total)`,
-    content,
-    branch
-  };
-  if (sha) body.sha = sha;
-
-  const putResp = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!putResp.ok) {
-    const err = await putResp.json();
-    throw new Error(err.message || `GitHub API error: ${putResp.status}`);
-  }
-
-  return await putResp.json();
 }

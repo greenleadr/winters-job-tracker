@@ -1,5 +1,5 @@
-import { loadApplications, subscribe, getStoredSettings, saveSettings, testConnection, persistToGitHub } from './data.js';
-import { configureChartDefaults, showToast, html } from './utils.js';
+import { loadApplications, isDBSeeded, seedFromJSON } from './data.js';
+import { configureChartDefaults, showToast } from './utils.js';
 import { renderDashboard, destroyDashboard } from './dashboard.js';
 import { renderTable, destroyTable } from './table.js';
 import { renderAnalytics, destroyAnalytics } from './analytics.js';
@@ -49,11 +49,10 @@ function renderView(view) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-// Settings Modal
+// Settings Modal — Database Management
 function openSettings() {
   const overlay = document.getElementById('modal-overlay');
   const modal = document.getElementById('modal');
-  const settings = getStoredSettings();
 
   modal.innerHTML = `
     <div class="modal-header">
@@ -64,74 +63,65 @@ function openSettings() {
     </div>
     <div class="modal-body">
       <div class="settings-field">
-        <label class="form-label">GitHub Personal Access Token</label>
-        <div class="password-wrapper">
-          <input type="password" class="form-input" id="settings-token" value="${settings.token}" placeholder="ghp_xxxxxxxxxxxx">
-          <button class="btn btn-ghost password-toggle" id="toggle-password" type="button">
-            <i data-lucide="eye" style="width:16px;height:16px"></i>
-          </button>
-        </div>
-        <p class="settings-help">Generate a token at github.com/settings/tokens with 'repo' scope. Stored in your browser only.</p>
+        <label class="form-label">Database</label>
+        <p class="settings-help" style="margin-bottom: var(--space-sm)">
+          Connected to Supabase. All changes are saved instantly to the database.
+        </p>
+        <span id="db-status"></span>
       </div>
-      <div class="settings-field">
-        <label class="form-label">Repository</label>
-        <input type="text" class="form-input" id="settings-repo" value="${settings.repo}" placeholder="owner/repo">
-      </div>
-      <div class="settings-field">
-        <label class="form-label">Data File Path</label>
-        <input type="text" class="form-input" id="settings-path" value="${settings.path}" placeholder="data/applications.json">
-      </div>
-      <div class="settings-field">
-        <label class="form-label">Branch</label>
-        <input type="text" class="form-input" id="settings-branch" value="${settings.branch}" placeholder="main">
-        <p class="settings-help">The branch to read from and commit to (e.g., main, master, or your feature branch).</p>
-      </div>
-      <div class="settings-field">
-        <button class="btn btn-secondary" id="test-connection-btn">Test Connection</button>
-        <span id="connection-result"></span>
+      <div class="settings-field" style="border-top: 1px solid var(--bg-border); padding-top: var(--space-md);">
+        <label class="form-label">Data Management</label>
+        <p class="settings-help" style="margin-bottom: var(--space-sm)">
+          If the database is empty, you can seed it with the original 184 applications from the JSON file.
+        </p>
+        <button class="btn btn-secondary" id="seed-db-btn">
+          <i data-lucide="database" style="width:14px;height:14px"></i>
+          Seed Database from JSON
+        </button>
+        <span id="seed-result" style="margin-left: var(--space-sm)"></span>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" id="settings-cancel">Cancel</button>
-      <button class="btn btn-primary" id="settings-save">Save Settings</button>
+      <button class="btn btn-ghost" id="settings-cancel">Done</button>
     </div>
   `;
 
   overlay.classList.add('visible');
   if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [modal] });
 
+  // Check DB status
+  (async () => {
+    const statusEl = document.getElementById('db-status');
+    try {
+      const seeded = await isDBSeeded();
+      statusEl.innerHTML = seeded
+        ? '<span class="connection-status success">Connected &mdash; database has data</span>'
+        : '<span class="connection-status error">Connected &mdash; database is empty</span>';
+    } catch (e) {
+      statusEl.innerHTML = `<span class="connection-status error">Error: ${e.message}</span>`;
+    }
+  })();
+
   // Event handlers
   document.getElementById('modal-close-btn').onclick = closeModal;
   document.getElementById('settings-cancel').onclick = closeModal;
 
-  document.getElementById('toggle-password').onclick = () => {
-    const input = document.getElementById('settings-token');
-    input.type = input.type === 'password' ? 'text' : 'password';
-  };
-
-  document.getElementById('test-connection-btn').onclick = async () => {
-    const resultEl = document.getElementById('connection-result');
-    const token = document.getElementById('settings-token').value;
-    const repo = document.getElementById('settings-repo').value;
-    saveSettings(token, repo, document.getElementById('settings-path').value, document.getElementById('settings-branch').value);
-    resultEl.innerHTML = '<span class="loading-spinner"></span>';
+  document.getElementById('seed-db-btn').onclick = async () => {
+    const resultEl = document.getElementById('seed-result');
+    const btn = document.getElementById('seed-db-btn');
+    btn.disabled = true;
+    resultEl.innerHTML = '<span class="loading-spinner"></span> Seeding...';
     try {
-      await testConnection();
-      resultEl.innerHTML = '<span class="connection-status success">Connected!</span>';
+      const count = await seedFromJSON();
+      resultEl.innerHTML = `<span class="connection-status success">Seeded ${count} applications!</span>`;
+      showToast(`Database seeded with ${count} applications`);
+      // Refresh view
+      renderView(currentView);
     } catch (e) {
       resultEl.innerHTML = `<span class="connection-status error">${e.message}</span>`;
+      showToast('Seed failed: ' + e.message, 'error');
     }
-  };
-
-  document.getElementById('settings-save').onclick = () => {
-    saveSettings(
-      document.getElementById('settings-token').value,
-      document.getElementById('settings-repo').value,
-      document.getElementById('settings-path').value,
-      document.getElementById('settings-branch').value
-    );
-    showToast('Settings saved');
-    closeModal();
+    btn.disabled = false;
   };
 }
 
